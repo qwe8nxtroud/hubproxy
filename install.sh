@@ -197,8 +197,12 @@ Description=HUBProxy: MTProto (слушает только localhost)
 After=network-online.target
 
 [Service]
-ExecStart=/opt/hubproxy/mtproto-proxy -u nobody --address 127.0.0.1 -H $MTPROXY_PORT -S $SECRET \\
-  --aes-pwd $STATE/proxy-secret $STATE/proxy-multi.conf -M 1 --nat-info 127.0.0.1:127.0.0.1
+# ⚠️ Ни --address, ни --nat-info здесь не место. Оба ограничивают ИСХОДЯЩИЕ
+# соединения, а MTProxy должен свободно ходить к серверам Telegram: с ними он
+# падает в «connect(): Invalid argument» и клиент вечно висит на «соединение».
+# Наружу порт закрыт файрволом, этого достаточно.
+ExecStart=/opt/hubproxy/mtproto-proxy -u nobody -H $MTPROXY_PORT -S $SECRET \\
+  --aes-pwd $STATE/proxy-secret $STATE/proxy-multi.conf -M 1
 Restart=always
 RestartSec=3
 NoNewPrivileges=true
@@ -242,8 +246,16 @@ case "$CODE" in
   000) warn "Домен пока молчит — сертификат выпускается до минуты. Проверьте: curl -I https://$DOMAIN/" ;;
   *)   warn "Ответ $CODE. Журнал: journalctl -u caddy -n 30" ;;
 esac
-if ss -ltn | grep -q "127.0.0.1:$MTPROXY_PORT"; then ok "MTProxy слушает только localhost"
-elif ss -ltn | grep -q ":$MTPROXY_PORT"; then warn "MTProxy слушает НАРУЖУ — проверьте --address 127.0.0.1"
+if ss -ltn | grep -q ":$MTPROXY_PORT"; then
+  ok "MTProxy поднят"
+  # порт слушается на всех интерфейсах (иначе прокси не сможет ходить к Telegram),
+  # поэтому закрываем его снаружи файрволом, а не привязкой к localhost
+  if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
+    ufw deny "$MTPROXY_PORT"/tcp >/dev/null 2>&1 || true
+    ok "Порт $MTPROXY_PORT закрыт снаружи (ufw)"
+  else
+    warn "ufw выключен: закройте порт $MTPROXY_PORT снаружи вручную, иначе прокси доступен в обход маскировки"
+  fi
 else warn "MTProxy не слушает $MTPROXY_PORT"; fi
 ss -ltn | grep -q "127.0.0.1:$TPROXY_PORT"  && ok "TProxy на месте" || warn "TProxy не слушает $TPROXY_PORT"
 
