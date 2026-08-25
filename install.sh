@@ -134,8 +134,20 @@ ok "TProxy готов"
 # ─── конфигурация ───────────────────────────────────────────────────────
 step "Беру данные Telegram"
 install -d -m 0755 "$STATE"
-curl -fsS --max-time 20 https://core.telegram.org/getProxySecret -o "$STATE/proxy-secret" || die "не скачался proxy-secret"
-curl -fsS --max-time 20 https://core.telegram.org/getProxyConfig -o "$STATE/proxy-multi.conf" || die "не скачался proxy-multi.conf"
+# С серверов в РФ core.telegram.org иногда отвечает по IPv6 и очень медленно
+# (замеряли 11 с против 0,07 с из Европы), поэтому просим IPv4, даём запас по
+# времени и повторяем попытки: одиночный curl тут регулярно не укладывается.
+tg_fetch() {
+  local url="$1" out="$2" i
+  for i in 1 2 3; do
+    curl -fsS --ipv4 --max-time 60 --retry 2 --retry-delay 3 "$url" -o "$out" && return 0
+    warn "попытка $i не удалась, повторяю…"
+    sleep 3
+  done
+  return 1
+}
+tg_fetch https://core.telegram.org/getProxySecret "$STATE/proxy-secret" || die "не скачался proxy-secret с серверов Telegram"
+tg_fetch https://core.telegram.org/getProxyConfig "$STATE/proxy-multi.conf" || die "не скачался proxy-multi.conf"
 [[ -s "$STATE/proxy-secret" && -s "$STATE/proxy-multi.conf" ]] || die "файлы Telegram пустые — попробуйте позже"
 ok "Конфигурация получена"
 
