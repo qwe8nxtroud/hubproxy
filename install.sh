@@ -180,9 +180,32 @@ ok "Секрет создан"
 step "Настраиваю Caddy"
 # Весь трафик уходит в TProxy — он сам разделит браузер и Telegram.
 cat > /etc/caddy/Caddyfile <<CADDY
+{
+	email admin@$DOMAIN
+	admin off
+	servers {
+		# Только h1/h2. HTTP/3 здесь лишний: клиент Telegram им не пользуется,
+		а лишний ALPN на 443 делает сервер заметнее.
+		protocols h1 h2
+		timeouts {
+			read_header 10s
+			# ⚠️ TProxy держит длинные опросы (~25 с). С дефолтными таймаутами
+			# Caddy рвёт их, и клиент показывает «недоступен».
+			read_body 60s
+		}
+	}
+}
+
 $DOMAIN {
-    encode gzip
-    reverse_proxy 127.0.0.1:$TPROXY_PORT
+	encode zstd gzip
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	# Весь трафик уходит в TProxy: и сайт, и Telegram. Разделять пути нельзя,
+	# иначе поведение двух веток начнёт отличаться и прокси станет заметен.
+	reverse_proxy 127.0.0.1:$TPROXY_PORT {
+		transport http {
+			response_header_timeout 40s
+		}
+	}
 }
 CADDY
 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1 || die "Caddy не принял конфиг"
