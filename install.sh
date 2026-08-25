@@ -185,7 +185,7 @@ cat > /etc/caddy/Caddyfile <<CADDY
 	admin off
 	servers {
 		# Только h1/h2. HTTP/3 здесь лишний: клиент Telegram им не пользуется,
-		а лишний ALPN на 443 делает сервер заметнее.
+		# а лишний ALPN на 443 делает сервер заметнее.
 		protocols h1 h2
 		timeouts {
 			read_header 10s
