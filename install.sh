@@ -294,8 +294,11 @@ if ss -ltn | grep -q ":$MTPROXY_PORT"; then
 else warn "MTProxy не слушает $MTPROXY_PORT"; fi
 ss -ltn | grep -q "127.0.0.1:$TPROXY_PORT"  && ok "TProxy на месте" || warn "TProxy не слушает $TPROXY_PORT"
 
-DOMAIN_HEX=$(printf '%s' "$DOMAIN" | xxd -p -c 256 | tr -d '\n')
-LINK="tg://proxy?server=$DOMAIN&port=443&secret=ee${SECRET}${DOMAIN_HEX}"
+# ⚠️ Именно webproxy, а не proxy. tg://proxy с префиксом ee — это классический
+# MTProto с подделкой TLS: клиент открывает MTProto-соединение напрямую, и на
+# 443 его встречает веб-сервер, а не прокси. Telegram показывает «недоступен».
+# TProxy общается по HTTPS, и клиент должен знать об этом из схемы ссылки.
+LINK="tg://webproxy?server=$DOMAIN&secret=$SECRET"
 umask 077
 cat > "$INFO" <<TXT
 HUBProxy — подключение
